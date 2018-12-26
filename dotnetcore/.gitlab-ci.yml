@@ -1,0 +1,57 @@
+variables:
+  DOCKER_DRIVER: overlay2
+  KUBELESS_IMAGE: registry.ks-test.kuberstack.com/vk/kubeless-cli
+  KUBELESS_VERSION: latest
+
+image: ${KUBELESS_IMAGE}:${KUBELESS_VERSION}
+
+before_script:
+ - mkdir -p /root/.kube
+ - touch /root/.kube/config
+
+stages:
+  - get-dotnetcore-func-deploy
+  - get-dotnetcore-func-test
+  - get-dotnetcore-trig-deploy
+  - get-dotnetcore-trig-test
+
+get-dotnetcore-func-deploy:branch:
+  stage: get-dotnetcore-func-deploy
+  only:
+    - branches
+  variables:
+    FUNCTION_NAME: "get-dotnetcore"
+    FUNCTION_RUNTIME: "dotnetcore2.0"
+    FUNCTION_HANDLER: "module.handler"
+    FUNCTION_FILE: "dotnetcore/helloget.cs"
+  script:
+    - sh -c "if [ '$(/kubeless function ls | grep ${FUNCTION_NAME})' ]; then /kubeless function update ${FUNCTION_NAME} --runtime ${FUNCTION_RUNTIME} --handler ${FUNCTION_HANDLER} --from-file ${FUNCTION_FILE}; else /kubeless function deploy ${FUNCTION_NAME} --runtime ${FUNCTION_RUNTIME} --handler ${FUNCTION_HANDLER} --from-file ${FUNCTION_FILE}; fi"
+
+get-dotnetcore-func-test:branch:
+  stage: get-dotnetcore-func-test
+  only:
+    - branches
+  variables:
+    FUNCTION_NAME: "get-dotnetcore"
+  script:
+    - /kubeless function call ${FUNCTION_NAME} |egrep hello.world
+
+get-dotnetcore-trig-deploy:branch:
+  stage: get-dotnetcore-trig-deploy
+  only:
+    - branches
+  variables:
+    FUNCTION_NAME: "get-dotnetcore"
+    TRIGGER_NAME: "get-dotnetcore"
+    TRIGGER_HOSTNAME: "get-dotnetcore.ks-test.kuberstack.com"
+  script:
+    - sh -c "if [ '$(/kubeless trigger http ls | grep ${TRIGGER_NAME})' ]; then /kubeless trigger http update ${TRIGGER_NAME} --function-name ${FUNCTION_NAME} --hostname ${TRIGGER_HOSTNAME} --enableTLSAcme; else /kubeless trigger http create ${TRIGGER_NAME} --function-name ${FUNCTION_NAME} --hostname ${TRIGGER_HOSTNAME} --enableTLSAcme; fi"
+
+get-dotnetcore-trig-test:branch:
+  stage: get-dotnetcore-trig-test
+  only:
+    - branches
+  variables:
+    TRIGGER_HOSTNAME: "get-dotnetcore.ks-test.kuberstack.com"
+  script:
+    - curl -k https://${TRIGGER_HOSTNAME}

@@ -1,0 +1,57 @@
+variables:
+  DOCKER_DRIVER: overlay2
+  KUBELESS_IMAGE: registry.ks-test.kuberstack.com/vk/kubeless-cli
+  KUBELESS_VERSION: latest
+
+image: ${KUBELESS_IMAGE}:${KUBELESS_VERSION}
+
+before_script:
+ - mkdir -p /root/.kube
+ - touch /root/.kube/config
+
+stages:
+  - get-nodejs-func-deploy
+  - get-nodejs-func-test
+  - get-nodejs-trig-deploy
+  - get-nodejs-trig-test
+
+get-nodejs-func-deploy:branch:
+  stage: get-nodejs-func-deploy
+  only:
+    - branches
+  variables:
+    FUNCTION_NAME: "get-nodejs"
+    FUNCTION_RUNTIME: "nodejs6"
+    FUNCTION_HANDLER: "helloget.foo"
+    FUNCTION_FILE: "nodejs/helloget.js"
+  script:
+    - sh -c "if [ '$(/kubeless function ls | grep ${FUNCTION_NAME})' ]; then /kubeless function update ${FUNCTION_NAME} --runtime ${FUNCTION_RUNTIME} --handler ${FUNCTION_HANDLER} --from-file ${FUNCTION_FILE}; else /kubeless function deploy ${FUNCTION_NAME} --runtime ${FUNCTION_RUNTIME} --handler ${FUNCTION_HANDLER} --from-file ${FUNCTION_FILE}; fi"
+
+get-nodejs-func-test:branch:
+  stage: get-nodejs-func-test
+  only:
+    - branches
+  variables:
+    FUNCTION_NAME: "get-nodejs"
+  script:
+    - /kubeless function call ${FUNCTION_NAME} |egrep hello.world
+
+get-nodejs-trig-deploy:branch:
+  stage: get-nodejs-trig-deploy
+  only:
+    - branches
+  variables:
+    FUNCTION_NAME: "get-nodejs"
+    TRIGGER_NAME: "get-nodejs"
+    TRIGGER_HOSTNAME: "get-nodejs.ks-test.kuberstack.com"
+  script:
+    - sh -c "if [ '$(/kubeless trigger http ls | grep ${TRIGGER_NAME})' ]; then /kubeless trigger http update ${TRIGGER_NAME} --function-name ${FUNCTION_NAME} --hostname ${TRIGGER_HOSTNAME} --enableTLSAcme; else /kubeless trigger http create ${TRIGGER_NAME} --function-name ${FUNCTION_NAME} --hostname ${TRIGGER_HOSTNAME} --enableTLSAcme; fi"
+
+get-nodejs-trig-test:branch:
+  stage: get-nodejs-trig-test
+  only:
+    - branches
+  variables:
+    TRIGGER_HOSTNAME: "get-nodejs.ks-test.kuberstack.com"
+  script:
+    - curl -k https://${TRIGGER_HOSTNAME}

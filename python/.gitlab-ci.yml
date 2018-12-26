@@ -1,0 +1,57 @@
+variables:
+  DOCKER_DRIVER: overlay2
+  KUBELESS_IMAGE: registry.ks-test.kuberstack.com/vk/kubeless-cli
+  KUBELESS_VERSION: latest
+
+image: ${KUBELESS_IMAGE}:${KUBELESS_VERSION}
+
+before_script:
+ - mkdir -p /root/.kube
+ - touch /root/.kube/config
+
+stages:
+  - get-python-func-deploy
+  - get-python-func-test
+  - get-python-trig-deploy
+  - get-python-trig-test
+
+get-python-func-deploy:branch:
+  stage: get-python-func-deploy
+  only:
+    - branches
+  variables:
+    FUNCTION_NAME: "get-python"
+    FUNCTION_RUNTIME: "python2.7"
+    FUNCTION_HANDLER: "helloget.foo"
+    FUNCTION_FILE: "python/helloget.py"
+  script:
+    - sh -c "if [ '$(/kubeless function ls | grep ${FUNCTION_NAME})' ]; then /kubeless function update ${FUNCTION_NAME} --runtime ${FUNCTION_RUNTIME} --handler ${FUNCTION_HANDLER} --from-file ${FUNCTION_FILE}; else /kubeless function deploy ${FUNCTION_NAME} --runtime ${FUNCTION_RUNTIME} --handler ${FUNCTION_HANDLER} --from-file ${FUNCTION_FILE}; fi"
+
+get-python-func-test:branch:
+  stage: get-python-func-test
+  only:
+    - branches
+  variables:
+    FUNCTION_NAME: "get-python"
+  script:
+    - /kubeless function call ${FUNCTION_NAME} |egrep hello.world
+
+get-python-trig-deploy:branch:
+  stage: get-python-trig-deploy
+  only:
+    - branches
+  variables:
+    FUNCTION_NAME: "get-python"
+    TRIGGER_NAME: "get-python"
+    TRIGGER_HOSTNAME: "get-python.ks-test.kuberstack.com"
+  script:
+    - sh -c "if [ '$(/kubeless trigger http ls | grep ${TRIGGER_NAME})' ]; then /kubeless trigger http update ${TRIGGER_NAME} --function-name ${FUNCTION_NAME} --hostname ${TRIGGER_HOSTNAME} --enableTLSAcme; else /kubeless trigger http create ${TRIGGER_NAME} --function-name ${FUNCTION_NAME} --hostname ${TRIGGER_HOSTNAME} --enableTLSAcme; fi"
+
+get-python-trig-test:branch:
+  stage: get-python-trig-test
+  only:
+    - branches
+  variables:
+    TRIGGER_HOSTNAME: "get-python.ks-test.kuberstack.com"
+  script:
+    - curl -k https://${TRIGGER_HOSTNAME}
